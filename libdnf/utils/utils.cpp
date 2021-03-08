@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include "libdnf/dnf-sack-private.hpp"
 #include "libdnf/sack/advisorymodule.hpp"
+#include <librepo/librepo.h>
 
 #include <tinyformat/tinyformat.hpp>
 
@@ -309,6 +310,37 @@ void decompress(const char * inPath, const char * outPath, mode_t outMode, const
     }
     close(outFd);
     fclose(inFile);
+}
+
+bool checksum(const char * type, const char * inPath, const char * checksum_valid)
+{
+    GError * errP{nullptr};
+    gboolean valid = FALSE;
+    LrChecksumType lr_type = lr_checksum_type(type);
+
+    if (lr_type == LR_CHECKSUM_UNKNOWN) {
+        throw std::runtime_error(tfm::format("Unknown checksum type %s", type));
+    }
+
+    auto inFd = open(inPath, O_RDONLY);
+
+    if (inFd == -1)
+        throw std::runtime_error(tfm::format("Error opening %s: %s", inPath, strerror(errno)));
+
+    auto ret = lr_checksum_fd_cmp(lr_type,
+                 inFd,
+                 checksum_valid,
+                 TRUE, /* use xattr value */
+                 &valid,
+                 &errP);
+
+    if (!ret) {
+      close(inFd);
+      throw LrException(errP->code, errP->message);
+    }
+    close(inFd);
+    // gboolean -> bool
+    return valid == TRUE;
 }
 
 }
